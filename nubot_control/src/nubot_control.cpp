@@ -65,13 +65,12 @@ namespace nubot
         int shoot_count = 0;
         DPoint supportTarget;
 
-        int commonTargetX,commonTargetY;
+        int commonTargetX, commonTargetY;
         nubot_common::BallIsHolding ball_holding_;
         nubot_common::ActionCmd action_cmd_;
         nubot_common::VelCmd vel;
 
-        int choosenPassArea;
-        static const int maxPassArea = 6;
+        /*
         int passArea[maxPassArea][2] = {
             {300, -350},
             {300, 0},
@@ -79,6 +78,11 @@ namespace nubot
             {800, -350},
             {800, 0},
             {800, 350}};
+            */
+        const int passArea[140][2] = {{50, -650}, {150, -650}, {250, -650}, {350, -650}, {450, -650}, {550, -650}, {650, -650}, {750, -650}, {850, -650}, {950, -650}, {50, -550}, {150, -550}, {250, -550}, {350, -550}, {450, -550}, {550, -550}, {650, -550}, {750, -550}, {850, -550}, {950, -550}, {50, -450}, {150, -450}, {250, -450}, {350, -450}, {450, -450}, {550, -450}, {650, -450}, {750, -450}, {850, -450}, {950, -450}, {50, -350}, {150, -350}, {250, -350}, {350, -350}, {450, -350}, {550, -350}, {650, -350}, {750, -350}, {850, -350}, {950, -350}, {50, -250}, {150, -250}, {250, -250}, {350, -250}, {450, -250}, {550, -250}, {650, -250}, {750, -250}, {850, -250}, {950, -250}, {50, -150}, {150, -150}, {250, -150}, {350, -150}, {450, -150}, {550, -150}, {650, -150}, {750, -150}, {850, -150}, {950, -150}, {50, -50}, {150, -50}, {250, -50}, {350, -50}, {450, -50}, {550, -50}, {650, -50}, {750, -50}, {850, -50}, {950, -50}, {50, 50}, {150, 50}, {250, 50}, {350, 50}, {450, 50}, {550, 50}, {650, 50}, {750, 50}, {850, 50}, {950, 50}, {50, 150}, {150, 150}, {250, 150}, {350, 150}, {450, 150}, {550, 150}, {650, 150}, {750, 150}, {850, 150}, {950, 150}, {50, 250}, {150, 250}, {250, 250}, {350, 250}, {450, 250}, {550, 250}, {650, 250}, {750, 250}, {850, 250}, {950, 250}, {50, 350}, {150, 350}, {250, 350}, {350, 350}, {450, 350}, {550, 350}, {650, 350}, {750, 350}, {850, 350}, {950, 350}, {50, 450}, {150, 450}, {250, 450}, {350, 450}, {450, 450}, {550, 450}, {650, 450}, {750, 450}, {850, 450}, {950, 450}, {50, 550}, {150, 550}, {250, 550}, {350, 550}, {450, 550}, {550, 550}, {650, 550}, {750, 550}, {850, 550}, {950, 550}, {50, 650}, {150, 650}, {250, 650}, {350, 650}, {450, 650}, {550, 650}, {650, 650}, {750, 650}, {850, 650}, {950, 650}};
+        const int maxPassArea = 140;
+        int choosenPassArea;
+
     public:
         NuBotControl(int argc, char **argv)
         {
@@ -571,7 +575,31 @@ namespace nubot
         {
             if (world_model_info_.AgentID_ == 2)
             {
-                
+                double up_radian_ = (world_model_info_.field_info_.oppGoal_[GOAL_MIDUPPER] - robot_pos_).angle().degree();
+                double low_radian_ = (world_model_info_.field_info_.oppGoal_[GOAL_MIDLOWER] - robot_pos_).angle().degree();
+                double shoot_angle_ = fabs(up_radian_ - low_radian_);
+
+                // printf("%.5f - %.5f - %.5f\n",shoot_angle_,up_radian_,low_radian_);
+                safePassingArea();
+
+                supportTarget.x_ = passArea[139][0]; // passArea[robot.targetZone][0];
+                supportTarget.y_ = passArea[139][1]; // passArea[robot.targetZone][1];
+                // robot.targetZone = safePassingArea();
+                // action_cmd_.move_action = Positioned_Static;
+                // action_cmd_.rotate_acton = Positioned_Static;
+                // action_cmd_.rotate_mode = 0;
+                // if (move2ori(SINGLEPI_CONSTANT / 2.0, robot_ori_.radian_))
+
+                // move2target(supportTarget, robot_pos_);
+                DPoint velocity = world_model_info_.RobotInfo_[world_model_info_.AgentID_ - 1].getVelocity();
+                // printf("%.5f\n",sqrt(velocity.x_*velocity.x_+velocity.y_*velocity.y_));
+            }
+
+            // switchGame();
+            /*
+            if (world_model_info_.AgentID_ == 2)
+            {
+
                 chaser = checkNearestToBall();
                 robot.targetZone = safePassingArea();
                 supportTarget.x_ = passArea[robot.targetZone][0];
@@ -598,6 +626,7 @@ namespace nubot
                 action_cmd_.move_action = No_Action;
                 action_cmd_.rotate_acton = No_Action;
             }
+            */
         }
 
         void switchGame()
@@ -607,6 +636,7 @@ namespace nubot
             {
             case 1:
             {
+                checkShootingLine(posx[1], posy[1]);
                 break;
             }
             case 2:
@@ -621,8 +651,7 @@ namespace nubot
             }
         }
 
-        bool
-        catchBall()
+        bool catchBall()
         {
             DPoint b2r = ball_pos_ - robot_pos_;
 
@@ -690,7 +719,7 @@ namespace nubot
 
             for (int _i = 1; _i < OUR_TEAM; _i++)
             {
-                if ( _i != _chaser)
+                if (_i != _chaser)
                 {
                     distance = target.distance(world_model_info_.RobotInfo_[_i].getLocation());
 
@@ -700,7 +729,7 @@ namespace nubot
                         robot_id = _i;
                     }
                 }
-                printf("%d||%.2f||%d\n", _i, distance_min,_chaser);
+                printf("%d||%.2f||%d\n", _i, distance_min, _chaser);
             }
 
             return robot_id;
@@ -746,36 +775,98 @@ namespace nubot
             return shootClear;
         }
 
+        bool checkShootingLine(float x1, float x2,float y1, float y2)
+        {
+            float robotRadius = 40.0;
+            bool shootClear = true;
+
+            if (x1 == x2 && y1 == y2)
+                shootClear = true;
+            else
+            {
+                for (int i = 0; i < 5; i++)
+                {
+                    float a = y1 - y2;
+                    float b = x2 - x1;
+                    float c = (x1 - x2) * y1 + (y2 - y1) * x1;
+                    float x = posxOpp[i];
+                    float y = posyOpp[i];
+
+                    float dist = (fabs(a * x + b * y + c)) / sqrt(a * a + b * b);
+                    if (robotRadius >= dist)
+                    {
+                        int d1 = distance(x, y, x1, y1);
+                        int d2 = distance(x, y, x2, y2);
+                        int d3 = distance(x1, y1, x2, y2);
+                        if (abs(d1 + d2 - d3) <= robotRadius + 5)
+                        {
+                            shootClear = false;
+                            printf("obs in %.2f %.2f %d\n", x, y, d1 + d2);
+                        }
+                    }
+                }
+            }
+            //if (shootClear == true)
+                //printf("ShootClear!\n");
+            return shootClear;
+        }
+
         int safePassingArea()
         {
             float highest = 0.0;
-            float zoneWeight[maxPassArea];
+            float lowest = 100000.0;
+            float zoneScore[140];
+            float posxPasser = posx[0];
+            float posyPasser = posy[0];
+            DPoint zonePos;
 
             for (int i = 0; i < maxPassArea; i++)
             {
+                bool isShootingClear = true;
+                zoneScore[i] = 0.0;
+                double up_radian_ = (world_model_info_.field_info_.oppGoal_[GOAL_MIDUPPER] - zonePos).angle().degree();
+                double low_radian_ = (world_model_info_.field_info_.oppGoal_[GOAL_MIDLOWER] - zonePos).angle().degree();
+                double shoot_angle_ = fabs(up_radian_ - low_radian_);
+
+                if (checkShootingLine(passArea[i][0], passArea[i][1], posxPasser, posyPasser) == false){
+                    break;
+                }
+
                 for (int j = 1; j < 5; j++)
                 {
-                    zoneWeight[i] += distance(passArea[i][0], passArea[i][1], posxOpp[j], posyOpp[j]);
-                    if (j == maxPassArea - 1)
-                        zoneWeight[i] /= 4.0;
+                    float opponentDistance = distancef(passArea[i][0], passArea[i][1], posxOpp[j], posyOpp[j]);
+                    if (opponentDistance >= 300.0)
+                        zoneScore[i] += 300.0;
+                    else
+                        zoneScore[i] += opponentDistance;
                 }
+                
+                float rToPasser = distancef(robot_pos_.x_,robot_pos_.y_,posxPasser,posyPasser);
+                float rToGrid = distancef(robot_pos_.x_,robot_pos_.y_,passArea[i][0],passArea[i][1]);
+                zoneScore[i] = std::max(0.0f, (zoneScore[i]/1200.0f)) + 200.0/std::max(200.0f,rToGrid) + 1.0/std::max(1.0f,rToGrid);
+                // zoneScore[i] = //max(0.0, (1.0 - shoot_angle_ / M_PI)) / pow(zoneScore[i], 2);
             }
+
             for (int i = 0; i < maxPassArea; i++)
             {
-                if (zoneWeight[i] > highest)
+                if (zoneScore[i] > highest)
                 {
-                    highest = zoneWeight[i];
+                    highest = zoneScore[i];
                     choosenPassArea = i;
+                    if (zoneScore[i] < 0.0)
+                        printf("Negative Value in Zone %d,%.2f,%d,%d\n", i, zoneScore[i], passArea[i][0], passArea[i][1]);
                 }
             }
-            // printf("Zone %d - Weight %d %d %d %d\n", choosenPassArea,zoneWeight[0], zoneWeight[1], zoneWeight[2], zoneWeight[3]);
-            // return choosenPassArea;
+            // printf("Zone %d - Score %d %d %d %d\n", choosenPassArea, zoneScore[0], zoneScore[1], zoneScore[2], zoneScore[3]);
+            printf("Zone %d - Score %.2f\n", choosenPassArea, zoneScore[choosenPassArea]);
+            return choosenPassArea;
         }
 
         int distance(int x1, int y1, int x2, int y2)
         {
-            return sqrt(pow(x2 - x1, 2) + pow(y2 - y1, 2) * 1.0);
+            return sqrt(pow(x2 - x1, 2) + pow(y2 - y1, 2));
         }
+        float distancef(float x1, float y1, float x2, float y2) { return sqrt(pow(x2 - x1, 2) + pow(y2 - y1, 2)); }
 
         bool move2target(DPoint target, DPoint pos, double distance_thres = 20.0) // 20 thresh // 一个十分简单的实现，可以用PID
         {
@@ -975,12 +1066,28 @@ namespace nubot
         }
     };
 }
+
+void mySigintHandler(int sig)
+{
+    ROS_WARN("Nubot Control IS KILLED from CTRL+C!!!");
+    ros::shutdown();
+}
+
+void mySigintHandlerTerm(int sig)
+{
+    ROS_WARN("Nubot Control IS KILLED from Terminal!!!");
+    ros::shutdown();
+}
+
 int main(int argc, char **argv)
 {
     ros::init(argc, argv, "nubot_control_node");
     // 完成一系列的初始化工作？ 以及相应的报错机制。  只有当所有的传感器信息都已经准备就绪的时候才可以运行
     ros::Time::init();
     ROS_INFO("start control process");
+    signal(SIGINT, mySigintHandler);
+    signal(SIGTERM, mySigintHandlerTerm);
+
     nubot::NuBotControl nubotcontrol(argc, argv);
     ros::spin();
     return 0;

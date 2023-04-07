@@ -1,3 +1,5 @@
+#include <signal.h>
+
 struct varPID
 {
 	float errorx, errory, errort;

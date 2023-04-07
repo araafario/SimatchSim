@@ -252,13 +252,17 @@ void Nubot_HWController::move2target()
     float tar_theta = relposoftarget.angle().radian_;
     static float _pos_e1 = 0;
     float speed  = 0;
-    p_move_ = 2; d_move_ = 0;
+    
+    p_move_ = 2; d_move_ = 0.2; // 2 and 0 is too fast
+    maxvel_=320;
+
     //p_move_ = 5; d_move_ = 0; //BYARAAF
     speed = basicPDControl(p_move_,d_move_,_pos_e,_pos_e1,maxvel_);
     Vx =  speed*cos(tar_theta - robot_ori_.radian_) + target_vel_.x_;
     Vy =  speed*sin(tar_theta - robot_ori_.radian_) + target_vel_.y_;
 
     double v=sqrt(Vx*Vx+Vy*Vy);
+    
     if(v>maxvel_)
     {
         Vx=Vx*maxvel_/v;
