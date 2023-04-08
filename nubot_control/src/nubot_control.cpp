@@ -476,6 +476,8 @@ namespace nubot
             {
                 supportTarget.x_ = currentRole[1]; // passArea[robot.targetZone][0];
                 supportTarget.y_ = currentRole[2]; // passArea[robot.targetZone][1];
+
+                /*
                 bool isTouching = false;
                 bool touched[12];
                 int angleToTarget;
@@ -534,6 +536,7 @@ namespace nubot
                     action_cmd_.maxvel = 100;
                 }
                 else action_cmd_.maxvel = 300;
+                */
 
                 action_cmd_.move_action = Positioned_Static;
                 action_cmd_.rotate_acton = Positioned_Static;
