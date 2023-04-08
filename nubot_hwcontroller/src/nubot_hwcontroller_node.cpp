@@ -253,7 +253,7 @@ void Nubot_HWController::move2target()
     static float _pos_e1 = 0;
     float speed  = 0;
     
-    p_move_ = 2; d_move_ = 0.2; // 2 and 0 is too fast
+    p_move_ = 0.5; d_move_ = 0; // 2 and 0 is too fast
     maxvel_=320;
 
     //p_move_ = 5; d_move_ = 0; //BYARAAF

@@ -103,7 +103,7 @@ nubot::World_Model::updateStrategyinfo(const nubot_common::simulation_strategy &
     {
         nubot_common::StrategyInfo strategyinfo = _strategyinfo.strategy_msgs[i];
         int AgentId = strategyinfo.AgentID;
-        if(AgentId < 1 || AgentId >OUR_TEAM)
+        if(AgentId < 1 || AgentId > OUR_TEAM)
             continue;
         PassCommands & pass_cmd_  = teammatesinfo_[AgentId-1].pass_cmds_;
         pass_cmd_.catchrobot_id   = strategyinfo.pass_cmd.catch_id;

@@ -18,7 +18,6 @@ namespace nubot
 {
     class NuBotControl
     {
-
     public:
         ros::Subscriber ballinfo3d_sub1_;
         ros::Subscriber odoinfo_sub_;
@@ -46,6 +45,7 @@ namespace nubot
         ros::Time currTK;
         ros::Time prevTK;
 
+        bool isCyan = true;
         double kp_;
         double kalpha_;
         double kbeta_;
@@ -65,7 +65,7 @@ namespace nubot
         int shoot_count = 0;
         DPoint supportTarget;
 
-        int commonTargetX, commonTargetY;
+        int sendRole[5], currentRole[5];
         nubot_common::BallIsHolding ball_holding_;
         nubot_common::ActionCmd action_cmd_;
         nubot_common::VelCmd vel;
@@ -81,7 +81,6 @@ namespace nubot
             */
         const int passArea[140][2] = {{50, -650}, {150, -650}, {250, -650}, {350, -650}, {450, -650}, {550, -650}, {650, -650}, {750, -650}, {850, -650}, {950, -650}, {50, -550}, {150, -550}, {250, -550}, {350, -550}, {450, -550}, {550, -550}, {650, -550}, {750, -550}, {850, -550}, {950, -550}, {50, -450}, {150, -450}, {250, -450}, {350, -450}, {450, -450}, {550, -450}, {650, -450}, {750, -450}, {850, -450}, {950, -450}, {50, -350}, {150, -350}, {250, -350}, {350, -350}, {450, -350}, {550, -350}, {650, -350}, {750, -350}, {850, -350}, {950, -350}, {50, -250}, {150, -250}, {250, -250}, {350, -250}, {450, -250}, {550, -250}, {650, -250}, {750, -250}, {850, -250}, {950, -250}, {50, -150}, {150, -150}, {250, -150}, {350, -150}, {450, -150}, {550, -150}, {650, -150}, {750, -150}, {850, -150}, {950, -150}, {50, -50}, {150, -50}, {250, -50}, {350, -50}, {450, -50}, {550, -50}, {650, -50}, {750, -50}, {850, -50}, {950, -50}, {50, 50}, {150, 50}, {250, 50}, {350, 50}, {450, 50}, {550, 50}, {650, 50}, {750, 50}, {850, 50}, {950, 50}, {50, 150}, {150, 150}, {250, 150}, {350, 150}, {450, 150}, {550, 150}, {650, 150}, {750, 150}, {850, 150}, {950, 150}, {50, 250}, {150, 250}, {250, 250}, {350, 250}, {450, 250}, {550, 250}, {650, 250}, {750, 250}, {850, 250}, {950, 250}, {50, 350}, {150, 350}, {250, 350}, {350, 350}, {450, 350}, {550, 350}, {650, 350}, {750, 350}, {850, 350}, {950, 350}, {50, 450}, {150, 450}, {250, 450}, {350, 450}, {450, 450}, {550, 450}, {650, 450}, {750, 450}, {850, 450}, {950, 450}, {50, 550}, {150, 550}, {250, 550}, {350, 550}, {450, 550}, {550, 550}, {650, 550}, {750, 550}, {850, 550}, {950, 550}, {50, 650}, {150, 650}, {250, 650}, {350, 650}, {450, 650}, {550, 650}, {650, 650}, {750, 650}, {850, 650}, {950, 650}};
         const int maxPassArea = 140;
-        int choosenPassArea;
 
     public:
         NuBotControl(int argc, char **argv)
@@ -96,6 +95,13 @@ namespace nubot
             environment = num.c_str();
             ROS_FATAL("control_robot_name:%s", robot_name.c_str());
             nh_ = boost::make_shared<ros::NodeHandle>(robot_name);
+
+            if (robot_name.find("rival") != std::string::npos)
+            {
+                isCyan = false;
+                ROS_FATAL("IM NOT CYAN !!");
+            }
+
 #else
             nh_ = boost::make_shared<ros::NodeHandle>();
             // 读取机器人标号，并赋值. 在 .bashrc 中输入export AGENT=1，2，3，4，等等；
@@ -236,12 +242,22 @@ namespace nubot
         void
         loopControl(const ros::TimerEvent &event)
         {
+
             match_mode_ = world_model_info_.CoachInfo_.MatchMode;     //! 当前比赛模式
             pre_match_mode_ = world_model_info_.CoachInfo_.MatchType; //! 上一个比赛模式
             robot_pos_ = world_model_info_.RobotInfo_[world_model_info_.AgentID_ - 1].getLocation();
             robot_ori_ = world_model_info_.RobotInfo_[world_model_info_.AgentID_ - 1].getHead();
             ball_pos_ = world_model_info_.BallInfo_[world_model_info_.AgentID_ - 1].getGlobalLocation();
             ball_vel_ = world_model_info_.BallInfo_[world_model_info_.AgentID_ - 1].getVelocity();
+
+            for (int i = 1; i < 5; i++)
+            {
+                int temp = world_model_info_.RobotInfo_[1].getTargetNum(i);
+                // if (temp > 0 && temp < 10)
+                currentRole[i] = temp;
+                // else
+                //     currentRole[i] = 99;
+            }
 
             if (match_mode_ == STOPROBOT)
             {
@@ -273,8 +289,18 @@ namespace nubot
                     posobs[i] = world_model_info_.Opponents_[i];
                     posxOpp[i] = posobs[i].x_;
                     posyOpp[i] = posobs[i].y_;
+                    // printf("%.2f %.2f|| ", posxOpp[i], posyOpp[i]);
                 }
-                normalGame();
+                // printf("\n");
+
+                if (isCyan == true)
+                {
+                    normalGame();
+                }
+                else
+                {
+                }
+
             } // start部分结束
             handleball();
             setEthercatCommand();
@@ -422,177 +448,104 @@ namespace nubot
             else
                 action_cmd_.handle_enable = 0;
         }
-        /*ARAAF*/
-        /*
-        void normalGame()
+
+        void normalGame() // mainloop
         {
-            static bool last_dribble = 0;
-            isactive =false;
-            if(world_model_info_.AgentID_ != 1 && isNearestRobot())
+
+            if (world_model_info_.AgentID_ - 1 == 1)
             {
-                isactive=true;
-            }
-            if(isactive && !shoot_flag)
-            {
-                DPoint b2r = ball_pos_ - robot_pos_;
-                DPoint tmp(200.0,300.0);
-                DPoint t2r = tmp - robot_pos_;
-                DPoint shoot_line = world_model_info_.field_info_.oppGoal_[GOAL_MIDDLE] - robot_pos_;
-                if(last_dribble != world_model_info_.RobotInfo_[world_model_info_.AgentID_-1].getDribbleState())
-                    ROS_INFO("change::");
-                last_dribble = world_model_info_.RobotInfo_[world_model_info_.AgentID_-1].getDribbleState();
+                int passerId = checkNearestToBall();
+                int supportId = safePassingArea(1);
 
-                if(!world_model_info_.RobotInfo_[world_model_info_.AgentID_-1].getDribbleState())
-                {
-                    action_cmd_.handle_enable = 1;
-                    if(move2ori(b2r.angle().radian_,robot_ori_.radian_))
-                        move2target(ball_pos_,robot_pos_);
-                    action_cmd_.move_action = CatchBall;
-                    action_cmd_.rotate_acton= CatchBall;
-                    action_cmd_.rotate_mode = 0;
-                }
-                else if(robot_pos_.distance(tmp)>30.0)
-                {
-                    action_cmd_.move_action = MoveWithBall;
-                    action_cmd_.rotate_acton= MoveWithBall;
-                    action_cmd_.rotate_mode = 0;
-                    if(move2ori(t2r.angle().radian_,robot_ori_.radian_))
-                        move2target(tmp,robot_pos_);
-                }
-                else
-                {
-                    action_cmd_.move_action = TurnForShoot;
-                    action_cmd_.rotate_acton= TurnForShoot;
-                    action_cmd_.rotate_mode = 0;
-                    move2target(tmp,robot_pos_);
-                    move2ori(shoot_line.angle().radian_,robot_ori_.radian_);
-                    {
-                        double up_radian_  = (world_model_info_.field_info_.oppGoal_[GOAL_MIDUPPER] - robot_pos_).angle().radian_;
-                        double low_radian_ = (world_model_info_.field_info_.oppGoal_[GOAL_MIDLOWER] - robot_pos_).angle().radian_;
-                        if(robot_ori_.radian_>low_radian_ && robot_ori_.radian_<up_radian_)
-                        {
-                            action_cmd_.shootPos = RUN;//FLY
-                            action_cmd_.strength = shoot_line.length()/100;
-                            if(action_cmd_.strength<3.0)
-                                action_cmd_.strength = 3.0;
-                            shoot_flag = true;
-                            std::cout<<"shoot done "<<std::endl;
-                        }
-                    }
-                }
-            }
-            else
-            {
-                action_cmd_.move_action=No_Action;
-                action_cmd_.rotate_acton=No_Action;
-                if(shoot_flag)
-                    shoot_count++;
-                if(shoot_count>20)
-                {
-                    shoot_count=0;
-                    shoot_flag=false;
-                }
+                supportTarget.x_ = passArea[supportId][0]; // passArea[robot.targetZone][0];
+                supportTarget.y_ = passArea[supportId][1]; // passArea[robot.targetZone][1];
 
-            }
-        }
-        */
+                sendRole[1] = supportTarget.x_;
+                sendRole[2] = supportTarget.y_;
 
-        /*
-        void normalGame()
-         {
-             static bool last_dribble = 0;
-             isactive =false;
-             if(world_model_info_.AgentID_ != 1 && isNearestRobot())
-             {
-                 isactive=true;
-             }
-             if(isactive && !shoot_flag)
-             {
-                 DPoint b2r = ball_pos_ - robot_pos_;
-                 DPoint tmp(743.0,143.0); //200,300 - 582,-580 - 743,143 ARAAF
-                 DPoint t2r = tmp - robot_pos_;
-                 DPoint shoot_line = world_model_info_.field_info_.oppGoal_[GOAL_MIDDLE] - robot_pos_;
-                 if(last_dribble != world_model_info_.RobotInfo_[world_model_info_.AgentID_-1].getDribbleState())
-                     ROS_INFO("change::");
-                 last_dribble = world_model_info_.RobotInfo_[world_model_info_.AgentID_-1].getDribbleState();
-
-                 if(!world_model_info_.RobotInfo_[world_model_info_.AgentID_-1].getDribbleState())
-                 {
-                     action_cmd_.handle_enable = 1;
-                     if(move2ori(b2r.angle().radian_,robot_ori_.radian_))
-                         move2target(ball_pos_,robot_pos_);
-                     action_cmd_.move_action = CatchBall;
-                     action_cmd_.rotate_acton= CatchBall;
-                     action_cmd_.rotate_mode = 0;
-                 }
-                 else if(robot_pos_.distance(tmp)>30.0)
-                 {
-                     action_cmd_.move_action = MoveWithBall;
-                     action_cmd_.rotate_acton= MoveWithBall;
-                     action_cmd_.rotate_mode = 0;
-                     if(move2ori(t2r.angle().radian_,robot_ori_.radian_))
-                         move2target(tmp,robot_pos_);
-                 }
-                 else
-                 {
-                     action_cmd_.move_action = TurnForShoot;
-                     action_cmd_.rotate_acton= TurnForShoot;
-                     action_cmd_.rotate_mode = 0;
-                     move2target(tmp,robot_pos_);
-                     move2ori(shoot_line.angle().radian_,robot_ori_.radian_);
-                     {
-                         double up_radian_  = (world_model_info_.field_info_.oppGoal_[GOAL_MIDUPPER] - robot_pos_).angle().radian_;
-                         double low_radian_ = (world_model_info_.field_info_.oppGoal_[GOAL_MIDLOWER] - robot_pos_).angle().radian_;
-                         if(robot_ori_.radian_>low_radian_ && robot_ori_.radian_<up_radian_)
-                         {
-                             action_cmd_.shootPos = RUN;//FLY
-                             action_cmd_.strength = shoot_line.length()/100;
-                             if(action_cmd_.strength<10.0) //ARAAF 3.0
-                                 action_cmd_.strength = 10.0;
-                             shoot_flag = true;
-                             std::cout<<"shoot done "<<std::endl;
-                         }
-                     }
-                 }
-             }
-             else
-             {
-                 action_cmd_.move_action=No_Action;
-                 action_cmd_.rotate_acton=No_Action;
-                 if(shoot_flag)
-                     shoot_count++;
-                 if(shoot_count>20)
-                 {
-                     shoot_count=0;
-                     shoot_flag=false;
-                 }
-
-             }
-         }
-         */
-
-        void normalGame()
-        {
-            if (world_model_info_.AgentID_ == 2)
-            {
-                double up_radian_ = (world_model_info_.field_info_.oppGoal_[GOAL_MIDUPPER] - robot_pos_).angle().degree();
-                double low_radian_ = (world_model_info_.field_info_.oppGoal_[GOAL_MIDLOWER] - robot_pos_).angle().degree();
-                double shoot_angle_ = fabs(up_radian_ - low_radian_);
-
-                // printf("%.5f - %.5f - %.5f\n",shoot_angle_,up_radian_,low_radian_);
-                safePassingArea();
-
-                supportTarget.x_ = passArea[139][0]; // passArea[robot.targetZone][0];
-                supportTarget.y_ = passArea[139][1]; // passArea[robot.targetZone][1];
                 // robot.targetZone = safePassingArea();
                 // action_cmd_.move_action = Positioned_Static;
                 // action_cmd_.rotate_acton = Positioned_Static;
-                // action_cmd_.rotate_mode = 0;
                 // if (move2ori(SINGLEPI_CONSTANT / 2.0, robot_ori_.radian_))
 
                 // move2target(supportTarget, robot_pos_);
-                DPoint velocity = world_model_info_.RobotInfo_[world_model_info_.AgentID_ - 1].getVelocity();
-                // printf("%.5f\n",sqrt(velocity.x_*velocity.x_+velocity.y_*velocity.y_));
+                //  DPoint velocity = world_model_info_.RobotInfo_[world_model_info_.AgentID_ - 1].getVelocity();
+                //  printf("%.5f\n",sqrt(velocity.x_*velocity.x_+velocity.y_*velocity.y_));
+            }
+            else if (world_model_info_.AgentID_ - 1 == 2)
+            {
+                supportTarget.x_ = currentRole[1]; // passArea[robot.targetZone][0];
+                supportTarget.y_ = currentRole[2]; // passArea[robot.targetZone][1];
+                bool isTouching = false;
+                bool touched[12];
+                int angleToTarget;
+                int closestAngle = 360, choosenAngle = 0;
+
+                DPoint rtt = DPoint(supportTarget.x_, supportTarget.y_) - robot_pos_;
+                angleToTarget = rtt.angle().degree();
+
+                for (int i = 1; i < 5; i++)
+                {
+                    for (int j = -180; j < 180; j += 30)
+                    {
+                        // Calculate endpoints of the line
+
+                        float x2 = robot_pos_.x_ + 80.0 * cos(j * (M_PI / 180));
+                        float y2 = robot_pos_.y_ + 80.0 * sin(j * (M_PI / 180));
+                        float x1 = robot.posx;
+                        float y1 = robot.posy;
+                        // Calculate distances between opponent and endpoints of the line
+                        float dist = sqrt(pow(x2 - posxOpp[i], 2) + pow(y2 - posyOpp[i], 2));
+                        if (j == -180 && i == 1)
+                            printf("X1 %.2f X2 %.2f Dist %.2f\n ", x2, y2, dist);
+
+                        // Determine if opponent is touching the line
+                        if (robot_pos_.distance(supportTarget) > 300 && dist < 100)
+                        {
+                            isTouching = true;
+                            touched[(j + 180) / 30] = true;
+                            // return true;
+                            printf("Touching %d\n ", j);
+                        }
+                        else if (robot_pos_.distance(supportTarget) <= 300 && dist < 20)
+                        {
+                            isTouching = true;
+                            touched[(j + 180) / 30] = true;
+                            // return true;
+                            printf("Touching %d\n ", j);
+                        }
+                    }
+                }
+
+                if (isTouching == true)
+                {
+                    for (int j = -180; j < 180; j += 30)
+                    { // check Closest Angle
+
+                        if (touched[(j + 180) / 30] == true)
+                            continue;
+                        if (abs(angleToTarget - j) < closestAngle)
+                        {
+                            closestAngle = j;
+                        }
+                    }
+                    supportTarget.x_ = robot_pos_.x_ + robot_pos_.distance(supportTarget) * cos(closestAngle * (M_PI / 180));
+                    supportTarget.y_ = robot_pos_.y_ + robot_pos_.distance(supportTarget) * sin(closestAngle * (M_PI / 180));
+                    action_cmd_.maxvel = 100;
+                }
+                else action_cmd_.maxvel = 300;
+
+                action_cmd_.move_action = Positioned_Static;
+                action_cmd_.rotate_acton = Positioned_Static;
+
+                move2target(supportTarget, robot_pos_);
+                // printf("%.2f %.2f|| ", posxOpp[i], posyOpp[i]);
+            }
+            else if (world_model_info_.AgentID_ - 1 == 3)
+            {
+            }
+            else if (world_model_info_.AgentID_ - 1 == 4)
+            {
             }
 
             // switchGame();
@@ -762,10 +715,10 @@ namespace nubot
                         int d1 = distance(x, y, x1, y1);
                         int d2 = distance(x, y, x2, y2);
                         int d3 = distance(x1, y1, x2, y2);
-                        if (abs(d1 + d2 - d3) <= robotRadius + 5)
+                        if (abs(d1 + d2) <= robotRadius + d3 + 5)
                         {
                             shootClear = false;
-                            printf("obs in %.2f %.2f %d\n", x, y, d1 + d2);
+                            // printf("obs in %.2f %.2f %d\n", x, y, d1 + d2);
                         }
                     }
                 }
@@ -775,90 +728,152 @@ namespace nubot
             return shootClear;
         }
 
-        bool checkShootingLine(float x1, float x2,float y1, float y2)
+        bool checkShootingLine(float x1, float y1, float x2, float y2, float safety = 5.0f)
         {
-            float robotRadius = 40.0;
             bool shootClear = true;
 
             if (x1 == x2 && y1 == y2)
-                shootClear = true;
-            else
-            {
-                for (int i = 0; i < 5; i++)
-                {
-                    float a = y1 - y2;
-                    float b = x2 - x1;
-                    float c = (x1 - x2) * y1 + (y2 - y1) * x1;
-                    float x = posxOpp[i];
-                    float y = posyOpp[i];
+                return false;
 
-                    float dist = (fabs(a * x + b * y + c)) / sqrt(a * a + b * b);
-                    if (robotRadius >= dist)
+            for (int i = 0; i < 5; i++)
+            {
+                float dx = x2 - x1;
+                float dy = y2 - y1;
+                float cx = posxOpp[i];
+                float cy = posyOpp[i];
+                float r = 40.0;
+
+                float a = dx * dx + dy * dy;
+                float b = 2 * (dx * (x1 - cx) + dy * (y1 - cy));
+                float c = cx * cx + cy * cy + x1 * x1 + y1 * y1 - 2 * (cx * x1 + cy * y1) - r * r;
+                float delta = b * b - 4 * a * c;
+                if (delta < 0)
+                {
+                }
+                else
+                {
+                    float t1 = (-b + sqrt(delta)) / (2 * a);
+                    float t2 = (-b - sqrt(delta)) / (2 * a);
+                    if ((t1 >= 0 && t1 <= 1) && (t2 >= 0 && t2 <= 1))
                     {
-                        int d1 = distance(x, y, x1, y1);
-                        int d2 = distance(x, y, x2, y2);
-                        int d3 = distance(x1, y1, x2, y2);
-                        if (abs(d1 + d2 - d3) <= robotRadius + 5)
+                        // Calculate the distance from the center of the circle to the line
+                        float dist = fabs(dy * cx - dx * cy + x2 * y1 - x1 * y2) / sqrt(a);
+                        if (dist <= r + safety)
                         {
                             shootClear = false;
-                            printf("obs in %.2f %.2f %d\n", x, y, d1 + d2);
+                            // printf("obs in %.2f %.2f %.2f\n", cx, cy, dist);
                         }
                     }
                 }
             }
-            //if (shootClear == true)
-                //printf("ShootClear!\n");
+
+            // if (shootClear == true)
+            //     printf("ShootClear!\n");
             return shootClear;
         }
 
-        int safePassingArea()
+        int safePassingArea(int id)
         {
-            float highest = 0.0;
-            float lowest = 100000.0;
+            float highest = 0.0f;
             float zoneScore[140];
-            float posxPasser = posx[0];
-            float posyPasser = posy[0];
-            DPoint zonePos;
+            float posxPasser = posx[id];
+            float posyPasser = posy[id];
+            int choosenPassArea = 0;
 
             for (int i = 0; i < maxPassArea; i++)
             {
-                bool isShootingClear = true;
                 zoneScore[i] = 0.0;
+                double oppDistScore = 0.0f;
+                DPoint zonePos(passArea[i][0], passArea[i][1]);
                 double up_radian_ = (world_model_info_.field_info_.oppGoal_[GOAL_MIDUPPER] - zonePos).angle().degree();
                 double low_radian_ = (world_model_info_.field_info_.oppGoal_[GOAL_MIDLOWER] - zonePos).angle().degree();
                 double shoot_angle_ = fabs(up_radian_ - low_radian_);
+                if (shoot_angle_ > 30.0)
+                    shoot_angle_ = 30.0;
 
-                if (checkShootingLine(passArea[i][0], passArea[i][1], posxPasser, posyPasser) == false){
-                    break;
-                }
+                double goalPosDistance = world_model_info_.field_info_.oppGoal_[GOAL_MIDDLE].distance(zonePos);
 
-                for (int j = 1; j < 5; j++)
+                for (int j = 0; j < 5; j++)
                 {
                     float opponentDistance = distancef(passArea[i][0], passArea[i][1], posxOpp[j], posyOpp[j]);
-                    if (opponentDistance >= 300.0)
-                        zoneScore[i] += 300.0;
+                    if (opponentDistance >= 500.0f)
+                        oppDistScore += 500.0f;
                     else
-                        zoneScore[i] += opponentDistance;
+                    {
+                        oppDistScore += opponentDistance;
+                    }
+                    if (opponentDistance <= 100.0f)
+                    {
+                        oppDistScore = 0.0f;
+                        break;
+                    }
                 }
-                
-                float rToPasser = distancef(robot_pos_.x_,robot_pos_.y_,posxPasser,posyPasser);
-                float rToGrid = distancef(robot_pos_.x_,robot_pos_.y_,passArea[i][0],passArea[i][1]);
-                zoneScore[i] = std::max(0.0f, (zoneScore[i]/1200.0f)) + 200.0/std::max(200.0f,rToGrid) + 1.0/std::max(1.0f,rToGrid);
-                // zoneScore[i] = //max(0.0, (1.0 - shoot_angle_ / M_PI)) / pow(zoneScore[i], 2);
-            }
 
-            for (int i = 0; i < maxPassArea; i++)
-            {
+                float gToPasser = distancef(passArea[i][0], passArea[i][1], posxPasser, posyPasser);
+                float minDistPasser = 400.0f, maxDistPasser = 1000.0f, gToPasserScore = 0.0f;
+
+                if (gToPasser > minDistPasser)
+                {
+                    if (gToPasser > maxDistPasser)
+                        gToPasser = maxDistPasser;
+                    gToPasserScore = (gToPasser - minDistPasser) / (maxDistPasser - minDistPasser);
+                }
+                else
+                    gToPasserScore = 1.0f;
+
+                double gToGoal = world_model_info_.field_info_.oppGoal_[GOAL_MIDDLE].distance(zonePos);
+                float minDistGoal = 200.0f, maxDistGoal = 1000.0f, gToGoalScore = 0.0f;
+
+                if (gToGoal > minDistGoal)
+                {
+                    if (gToGoal > minDistGoal)
+                        gToGoal = maxDistGoal;
+                    gToGoalScore = (gToPasser - minDistGoal) / (maxDistGoal - minDistGoal);
+                }
+                else
+                    gToGoalScore = 1.0f;
+
+                // float minDistGrid = 0.0f, maxDistGrid = 1000.0f
+                // float rToGrid = distancef(robot.posx, robot.posy, passArea[i][0], passArea[i][1]);
+                // if (rToGrid < minDistGrid)
+                //     rToGrid = minDistGrid;
+                // else if (rToGrid > maxDistGrid)
+                //     rToGrid = maxDistGrid;
+
+                // gToPasserScore = 1.0f - gToPasserScore;
+                //  float rToGridScore = 1.0f - (maxDistGrid - minDistGrid) / (rToGrid - minDistGrid);
+
+                // zoneScore[i] = zoneScore[i] + gToPasserScore + rToGridScore;
+
+                // zoneScore[i] = //max(0.0, (1.0 - shoot_angle_ / M_PI)) / pow(zoneScore[i], 2);
+
+                oppDistScore /= 1400.0f * 5.0f;
+                shoot_angle_ /= 30.0f;
+                // zoneScore[i] = zoneScore[i] * 0.1 + shoot_angle_ * 0.2 + gToPasserScore * 0.7;
+                zoneScore[i] = (1.0f - gToPasserScore) * 0.5f + oppDistScore * 0.5f + (1.0f - gToGoalScore) + 0.5f;
+                // printf("%.2f\n", zoneScore[i]);
+
+                if (checkShootingLine(passArea[i][0], passArea[i][1], posxPasser, posyPasser, 25.0f) == false)
+                {
+                    zoneScore[i] = 0.0f;
+                }
+                if (oppDistScore == 0.0f)
+                    zoneScore[i] = 0.0f;
+
                 if (zoneScore[i] > highest)
                 {
                     highest = zoneScore[i];
                     choosenPassArea = i;
-                    if (zoneScore[i] < 0.0)
-                        printf("Negative Value in Zone %d,%.2f,%d,%d\n", i, zoneScore[i], passArea[i][0], passArea[i][1]);
                 }
             }
+
+            if (checkShootingLine(passArea[choosenPassArea][0], passArea[choosenPassArea][1], posxPasser, posyPasser) == false)
+            {
+                printf("Cannot shoot laa\n");
+            }
+
             // printf("Zone %d - Score %d %d %d %d\n", choosenPassArea, zoneScore[0], zoneScore[1], zoneScore[2], zoneScore[3]);
-            printf("Zone %d - Score %.2f\n", choosenPassArea, zoneScore[choosenPassArea]);
+            // printf("Zone %d - Score %.2f\n", choosenPassArea, zoneScore[choosenPassArea]);
             return choosenPassArea;
         }
 
@@ -1060,8 +1075,10 @@ namespace nubot
             strategy_info.header.stamp = ros::Time::now();
             strategy_info.AgentID = world_model_info_.AgentID_;
             strategy_info.is_dribble = ball_holding_.BallIsHolding;
-            strategy_info.targetNum1 = commonTargetX;
-            strategy_info.targetNum2 = commonTargetY;
+            strategy_info.targetNum1 = sendRole[1];
+            strategy_info.targetNum2 = sendRole[2];
+            strategy_info.targetNum3 = sendRole[3];
+            strategy_info.targetNum4 = sendRole[4];
             strategy_info_pub_.publish(strategy_info);
         }
     };
@@ -1084,7 +1101,15 @@ int main(int argc, char **argv)
     ros::init(argc, argv, "nubot_control_node");
     // 完成一系列的初始化工作？ 以及相应的报错机制。  只有当所有的传感器信息都已经准备就绪的时候才可以运行
     ros::Time::init();
+
     ROS_INFO("start control process");
+
+    for (int i = 0; i < argc; i++)
+    {
+        std::string arg = std::string(argv[i]);
+        std::cout << arg << std::endl;
+    }
+
     signal(SIGINT, mySigintHandler);
     signal(SIGTERM, mySigintHandlerTerm);
 
@@ -1092,3 +1117,152 @@ int main(int argc, char **argv)
     ros::spin();
     return 0;
 }
+
+/*ARAAF*/
+/*
+void normalGame()
+{
+    static bool last_dribble = 0;
+    isactive =false;
+    if(world_model_info_.AgentID_ != 1 && isNearestRobot())
+    {
+        isactive=true;
+    }
+    if(isactive && !shoot_flag)
+    {
+        DPoint b2r = ball_pos_ - robot_pos_;
+        DPoint tmp(200.0,300.0);
+        DPoint t2r = tmp - robot_pos_;
+        DPoint shoot_line = world_model_info_.field_info_.oppGoal_[GOAL_MIDDLE] - robot_pos_;
+        if(last_dribble != world_model_info_.RobotInfo_[world_model_info_.AgentID_-1].getDribbleState())
+            ROS_INFO("change::");
+        last_dribble = world_model_info_.RobotInfo_[world_model_info_.AgentID_-1].getDribbleState();
+
+        if(!world_model_info_.RobotInfo_[world_model_info_.AgentID_-1].getDribbleState())
+        {
+            action_cmd_.handle_enable = 1;
+            if(move2ori(b2r.angle().radian_,robot_ori_.radian_))
+                move2target(ball_pos_,robot_pos_);
+            action_cmd_.move_action = CatchBall;
+            action_cmd_.rotate_acton= CatchBall;
+            action_cmd_.rotate_mode = 0;
+        }
+        else if(robot_pos_.distance(tmp)>30.0)
+        {
+            action_cmd_.move_action = MoveWithBall;
+            action_cmd_.rotate_acton= MoveWithBall;
+            action_cmd_.rotate_mode = 0;
+            if(move2ori(t2r.angle().radian_,robot_ori_.radian_))
+                move2target(tmp,robot_pos_);
+        }
+        else
+        {
+            action_cmd_.move_action = TurnForShoot;
+            action_cmd_.rotate_acton= TurnForShoot;
+            action_cmd_.rotate_mode = 0;
+            move2target(tmp,robot_pos_);
+            move2ori(shoot_line.angle().radian_,robot_ori_.radian_);
+            {
+                double up_radian_  = (world_model_info_.field_info_.oppGoal_[GOAL_MIDUPPER] - robot_pos_).angle().radian_;
+                double low_radian_ = (world_model_info_.field_info_.oppGoal_[GOAL_MIDLOWER] - robot_pos_).angle().radian_;
+                if(robot_ori_.radian_>low_radian_ && robot_ori_.radian_<up_radian_)
+                {
+                    action_cmd_.shootPos = RUN;//FLY
+                    action_cmd_.strength = shoot_line.length()/100;
+                    if(action_cmd_.strength<3.0)
+                        action_cmd_.strength = 3.0;
+                    shoot_flag = true;
+                    std::cout<<"shoot done "<<std::endl;
+                }
+            }
+        }
+    }
+    else
+    {
+        action_cmd_.move_action=No_Action;
+        action_cmd_.rotate_acton=No_Action;
+        if(shoot_flag)
+            shoot_count++;
+        if(shoot_count>20)
+        {
+            shoot_count=0;
+            shoot_flag=false;
+        }
+
+    }
+}
+*/
+
+/*
+void normalGame()
+ {
+     static bool last_dribble = 0;
+     isactive =false;
+     if(world_model_info_.AgentID_ != 1 && isNearestRobot())
+     {
+         isactive=true;
+     }
+     if(isactive && !shoot_flag)
+     {
+         DPoint b2r = ball_pos_ - robot_pos_;
+         DPoint tmp(743.0,143.0); //200,300 - 582,-580 - 743,143 ARAAF
+         DPoint t2r = tmp - robot_pos_;
+         DPoint shoot_line = world_model_info_.field_info_.oppGoal_[GOAL_MIDDLE] - robot_pos_;
+         if(last_dribble != world_model_info_.RobotInfo_[world_model_info_.AgentID_-1].getDribbleState())
+             ROS_INFO("change::");
+         last_dribble = world_model_info_.RobotInfo_[world_model_info_.AgentID_-1].getDribbleState();
+
+         if(!world_model_info_.RobotInfo_[world_model_info_.AgentID_-1].getDribbleState())
+         {
+             action_cmd_.handle_enable = 1;
+             if(move2ori(b2r.angle().radian_,robot_ori_.radian_))
+                 move2target(ball_pos_,robot_pos_);
+             action_cmd_.move_action = CatchBall;
+             action_cmd_.rotate_acton= CatchBall;
+             action_cmd_.rotate_mode = 0;
+         }
+         else if(robot_pos_.distance(tmp)>30.0)
+         {
+             action_cmd_.move_action = MoveWithBall;
+             action_cmd_.rotate_acton= MoveWithBall;
+             action_cmd_.rotate_mode = 0;
+             if(move2ori(t2r.angle().radian_,robot_ori_.radian_))
+                 move2target(tmp,robot_pos_);
+         }
+         else
+         {
+             action_cmd_.move_action = TurnForShoot;
+             action_cmd_.rotate_acton= TurnForShoot;
+             action_cmd_.rotate_mode = 0;
+             move2target(tmp,robot_pos_);
+             move2ori(shoot_line.angle().radian_,robot_ori_.radian_);
+             {
+                 double up_radian_  = (world_model_info_.field_info_.oppGoal_[GOAL_MIDUPPER] - robot_pos_).angle().radian_;
+                 double low_radian_ = (world_model_info_.field_info_.oppGoal_[GOAL_MIDLOWER] - robot_pos_).angle().radian_;
+                 if(robot_ori_.radian_>low_radian_ && robot_ori_.radian_<up_radian_)
+                 {
+                     action_cmd_.shootPos = RUN;//FLY
+                     action_cmd_.strength = shoot_line.length()/100;
+                     if(action_cmd_.strength<10.0) //ARAAF 3.0
+                         action_cmd_.strength = 10.0;
+                     shoot_flag = true;
+                     std::cout<<"shoot done "<<std::endl;
+                 }
+             }
+         }
+     }
+     else
+     {
+         action_cmd_.move_action=No_Action;
+         action_cmd_.rotate_acton=No_Action;
+         if(shoot_flag)
+             shoot_count++;
+         if(shoot_count>20)
+         {
+             shoot_count=0;
+             shoot_flag=false;
+         }
+
+     }
+ }
+ */
