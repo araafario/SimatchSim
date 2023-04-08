@@ -455,13 +455,26 @@ namespace nubot
             if (world_model_info_.AgentID_ - 1 == 1)
             {
                 int passerId = checkNearestToBall();
-                int supportId = safePassingArea(1);
+                static int choosenZone;
+                if ((ros::Time::now() - prevTK).toSec() > 1.0)
+                {
+                    choosenZone = safePassingArea(1);
+                    prevTK = ros::Time::now();
+                }
 
-                supportTarget.x_ = passArea[supportId][0]; // passArea[robot.targetZone][0];
-                supportTarget.y_ = passArea[supportId][1]; // passArea[robot.targetZone][1];
+                supportTarget.x_ = passArea[choosenZone][0]; // passArea[robot.targetZone][0];
+                supportTarget.y_ = passArea[choosenZone][1]; // passArea[robot.targetZone][1];
 
                 sendRole[1] = supportTarget.x_;
                 sendRole[2] = supportTarget.y_;
+
+                // DPoint tr = DPoint(posx[2], posy[2]) - robot_pos_;
+                // move2ori(tr.angle().radian_, robot_ori_.radian_);
+
+                catchBall();
+
+                // action_cmd_.rotate_acton = Positioned_Static;
+                // action_cmd_.rotate_mode = 0;
 
                 // robot.targetZone = safePassingArea();
                 // action_cmd_.move_action = Positioned_Static;
@@ -476,18 +489,12 @@ namespace nubot
             {
                 supportTarget.x_ = currentRole[1]; // passArea[robot.targetZone][0];
                 supportTarget.y_ = currentRole[2]; // passArea[robot.targetZone][1];
-                action_cmd_.move_action = Positioned_Static;
+                DPoint tr = DPoint(posx[1], posy[1]) - robot_pos_;
                 // action_cmd_.rotate_acton = Positioned_Static;
-                //DPoint rtt = DPoint(supportTarget.x_, supportTarget.y_) - robot_pos_;
-                //angleToTarget = rtt.angle().degree();
+                // DPoint rtt = DPoint(supportTarget.x_, supportTarget.y_) - robot_pos_;
+                // angleToTarget = rtt.angle().degree();
 
-                if (move2target(supportTarget, robot_pos_)) // 停到目标点10cm附近就不用动了，只需调整朝向
-                    move2ori(robot_ori_.radian_, robot_ori_.radian_);
-                action_cmd_.move_action = Positioned_Static;
-                action_cmd_.rotate_acton = Positioned_Static;
-                action_cmd_.rotate_mode = 0;
-
-                /*
+                
                 bool isTouching = false;
                 bool touched[12];
                 int angleToTarget;
@@ -512,7 +519,7 @@ namespace nubot
                             printf("X1 %.2f X2 %.2f Dist %.2f\n ", x2, y2, dist);
 
                         // Determine if opponent is touching the line
-                        if (robot_pos_.distance(supportTarget) > 300 && dist < 100)
+                        if (robot_pos_.distance(supportTarget) > 300 && dist < 20)
                         {
                             isTouching = true;
                             touched[(j + 180) / 30] = true;
@@ -543,10 +550,16 @@ namespace nubot
                     }
                     supportTarget.x_ = robot_pos_.x_ + robot_pos_.distance(supportTarget) * cos(closestAngle * (M_PI / 180));
                     supportTarget.y_ = robot_pos_.y_ + robot_pos_.distance(supportTarget) * sin(closestAngle * (M_PI / 180));
-                    action_cmd_.maxvel = 100;
+                    action_cmd_.maxvel = 150;
                 }
-                else action_cmd_.maxvel = 300;
-                */
+                else action_cmd_.maxvel = 150;
+                
+
+                move2target(supportTarget, robot_pos_, 200.0f, 0);
+                move2ori(tr.angle().radian_, robot_ori_.radian_);
+                action_cmd_.move_action = Positioned_Static;
+                action_cmd_.rotate_acton = Positioned_Static;
+                action_cmd_.rotate_mode = 0;
 
                 // printf("%.2f %.2f|| ", posxOpp[i], posyOpp[i]);
             }
@@ -859,7 +872,7 @@ namespace nubot
                 oppDistScore /= 1400.0f * 5.0f;
                 shoot_angle_ /= 30.0f;
                 // zoneScore[i] = zoneScore[i] * 0.1 + shoot_angle_ * 0.2 + gToPasserScore * 0.7;
-                zoneScore[i] = (1.0f - gToPasserScore) * 0.40f + oppDistScore * 0.20f + (1.0f - gToGoalScore) + 0.40f; //
+                zoneScore[i] = (1.0f - gToPasserScore) * 0.33f + oppDistScore * 0.20f + (1.0f - gToGoalScore) + 0.66f; //
                 // printf("%.2f\n", zoneScore[i]);
 
                 if (checkShootingLine(passArea[i][0], passArea[i][1], posxPasser, posyPasser, 25.0f) == false)
@@ -894,11 +907,11 @@ namespace nubot
         }
         float distancef(float x1, float y1, float x2, float y2) { return sqrt(pow(x2 - x1, 2) + pow(y2 - y1, 2)); }
 
-        bool move2target(DPoint target, DPoint pos, double distance_thres = 20.0) // 20 thresh // 一个十分简单的实现，可以用PID
+        bool move2target(DPoint target, DPoint pos, double distance_thres = 20.0, int offMaxVel = 0) // 20 thresh // 一个十分简单的实现，可以用PID
         {
             action_cmd_.target.x = target.x_;
             action_cmd_.target.y = target.y_;
-            action_cmd_.maxvel = pos.distance(target);
+            if (offMaxVel == 0) action_cmd_.maxvel = pos.distance(target);
             if (pos.distance(target) > distance_thres)
                 return false;
             else
