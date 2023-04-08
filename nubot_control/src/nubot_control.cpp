@@ -476,6 +476,16 @@ namespace nubot
             {
                 supportTarget.x_ = currentRole[1]; // passArea[robot.targetZone][0];
                 supportTarget.y_ = currentRole[2]; // passArea[robot.targetZone][1];
+                action_cmd_.move_action = Positioned_Static;
+                // action_cmd_.rotate_acton = Positioned_Static;
+                //DPoint rtt = DPoint(supportTarget.x_, supportTarget.y_) - robot_pos_;
+                //angleToTarget = rtt.angle().degree();
+
+                if (move2target(supportTarget, robot_pos_)) // 停到目标点10cm附近就不用动了，只需调整朝向
+                    move2ori(robot_ori_.radian_, robot_ori_.radian_);
+                action_cmd_.move_action = Positioned_Static;
+                action_cmd_.rotate_acton = Positioned_Static;
+                action_cmd_.rotate_mode = 0;
 
                 /*
                 bool isTouching = false;
@@ -538,10 +548,6 @@ namespace nubot
                 else action_cmd_.maxvel = 300;
                 */
 
-                action_cmd_.move_action = Positioned_Static;
-                action_cmd_.rotate_acton = Positioned_Static;
-
-                move2target(supportTarget, robot_pos_);
                 // printf("%.2f %.2f|| ", posxOpp[i], posyOpp[i]);
             }
             else if (world_model_info_.AgentID_ - 1 == 3)
@@ -853,13 +859,15 @@ namespace nubot
                 oppDistScore /= 1400.0f * 5.0f;
                 shoot_angle_ /= 30.0f;
                 // zoneScore[i] = zoneScore[i] * 0.1 + shoot_angle_ * 0.2 + gToPasserScore * 0.7;
-                zoneScore[i] = (1.0f - gToPasserScore) * 0.5f + oppDistScore * 0.5f + (1.0f - gToGoalScore) + 0.5f;
+                zoneScore[i] = (1.0f - gToPasserScore) * 0.40f + oppDistScore * 0.20f + (1.0f - gToGoalScore) + 0.40f; //
                 // printf("%.2f\n", zoneScore[i]);
 
                 if (checkShootingLine(passArea[i][0], passArea[i][1], posxPasser, posyPasser, 25.0f) == false)
                 {
                     zoneScore[i] = 0.0f;
                 }
+                if (gToPasser < minDistPasser)
+                    zoneScore[i] = 0.0f;
                 if (oppDistScore == 0.0f)
                     zoneScore[i] = 0.0f;
 

@@ -253,11 +253,20 @@ void Nubot_HWController::move2target()
     static float _pos_e1 = 0;
     float speed  = 0;
     
-    p_move_ = 0.5; d_move_ = 0; // 2 and 0 is too fast
-    maxvel_=320;
+    p_move_ = 1; d_move_ = 0;
+     // 2 and 0 is too fast
+    //maxvel_=320;
 
     //p_move_ = 5; d_move_ = 0; //BYARAAF
-    speed = basicPDControl(p_move_,d_move_,_pos_e,_pos_e1,maxvel_);
+
+    // if (_pos_e > 300) {
+    //     p_move_ = 0.3; d_move_ = 0.0;
+    // }
+    // else {
+    //     p_move_ = 1.0; d_move_ = 0.2;
+    // }
+
+    // speed = basicPDControl(p_move_,d_move_,_pos_e,_pos_e1,maxvel_);
     Vx =  speed*cos(tar_theta - robot_ori_.radian_) + target_vel_.x_;
     Vy =  speed*sin(tar_theta - robot_ori_.radian_) + target_vel_.y_;
 
