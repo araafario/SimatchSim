@@ -242,7 +242,6 @@ namespace nubot
         void
         loopControl(const ros::TimerEvent &event)
         {
-
             match_mode_ = world_model_info_.CoachInfo_.MatchMode;     //! 当前比赛模式
             pre_match_mode_ = world_model_info_.CoachInfo_.MatchType; //! 上一个比赛模式
             robot_pos_ = world_model_info_.RobotInfo_[world_model_info_.AgentID_ - 1].getLocation();
@@ -253,14 +252,15 @@ namespace nubot
             for (int i = 1; i < 5; i++)
             {
                 int temp = world_model_info_.RobotInfo_[1].getTargetNum(i);
-                // if (temp > 0 && temp < 10)
-                currentRole[i] = temp;
-                // else
-                //     currentRole[i] = 99;
+                //if (temp >= 0 && temp < 1000)
+                    currentRole[i] = temp;
+                //else
+                    // currentRole[i] = 99;
             }
 
             if (match_mode_ == STOPROBOT)
             {
+                // printf("\nBALL POSSSS %d\n",(int)ball_pos_.x_);
                 /// 运动参数
                 action_cmd_.move_action = No_Action;
                 action_cmd_.rotate_acton = No_Action;
@@ -295,14 +295,21 @@ namespace nubot
 
                 if (isCyan == true)
                 {
-                    normalGame();
+                    if ((int)ball_pos_.x_ > 1000) match_mode_ = STOPROBOT;
+                    else normalGame(); 
+                    // switchGame();
                 }
                 else
                 {
+                    DPoint b2r = ball_pos_ - robot_pos_;
+                    move2ori(b2r.angle().radian_,robot_ori_.radian_);
+                    action_cmd_.move_action = TurnToPass;
+                    action_cmd_.rotate_acton = TurnToPass;
                 }
 
-            } // start部分结束
-            handleball();
+            } 
+            // start部分结束
+            //handleball();
             setEthercatCommand();
             pubStrategyInfo(); // 发送策略消息让其他机器人看到，这一部分一般用于多机器人之间的协同
         }
@@ -443,7 +450,7 @@ namespace nubot
 
         void handleball()
         {
-            if (isactive && match_mode_ == STARTROBOT && !shoot_flag)
+            if (match_mode_ == STARTROBOT && !shoot_flag)
                 action_cmd_.handle_enable = 1;
             else
                 action_cmd_.handle_enable = 0;
@@ -451,178 +458,105 @@ namespace nubot
 
         void normalGame() // mainloop
         {
-
             if (world_model_info_.AgentID_ - 1 == 1)
             {
-                int passerId = checkNearestToBall();
-                static int choosenZone;
+                static int choosenZone, supportID, passerID;
                 if ((ros::Time::now() - prevTK).toSec() > 1.0)
                 {
-                    choosenZone = safePassingArea(1);
+                    passerID = checkNearestToBall();
+                    choosenZone = safePassingArea(passerID);
                     prevTK = ros::Time::now();
+
+                    int lDist = 10000;
+                    for (int i=1; i<5; i++){
+                        if (i == passerID) continue;
+                        int dist = distance(posx[i],posy[i],passArea[choosenZone][0],passArea[choosenZone][1]);
+                        if (dist<lDist) {
+                            supportID = i;
+                            lDist = dist;
+                        }
+                    }
+                    sendRole[1] = passerID;
+                    sendRole[2] = supportID;
+                    sendRole[3] = choosenZone;
+
+                    sendRole[4] = 0;
+                    currentRole[4] = 0;
                 }
+                else {
+                    if (currentRole[4] == 99) {
+                        sendRole[1] = currentRole[2];
+                        sendRole[2] = safePassingArea(sendRole[1]);
+                    }
+                    else if (currentRole[4] == 98) {
+                        sendRole[2] = 99;
+                    }
+                }
+                
+                // if (currentRole[4] == 98 || sendRole[4] == 98) sendRole[2] = supportID;
+                
+                
 
-                supportTarget.x_ = passArea[choosenZone][0]; // passArea[robot.targetZone][0];
-                supportTarget.y_ = passArea[choosenZone][1]; // passArea[robot.targetZone][1];
-
-                sendRole[1] = supportTarget.x_;
-                sendRole[2] = supportTarget.y_;
-
-                // DPoint tr = DPoint(posx[2], posy[2]) - robot_pos_;
-                // move2ori(tr.angle().radian_, robot_ori_.radian_);
-
-                catchBall();
-
-                // action_cmd_.rotate_acton = Positioned_Static;
-                // action_cmd_.rotate_mode = 0;
-
-                // robot.targetZone = safePassingArea();
-                // action_cmd_.move_action = Positioned_Static;
-                // action_cmd_.rotate_acton = Positioned_Static;
-                // if (move2ori(SINGLEPI_CONSTANT / 2.0, robot_ori_.radian_))
-
-                // move2target(supportTarget, robot_pos_);
-                //  DPoint velocity = world_model_info_.RobotInfo_[world_model_info_.AgentID_ - 1].getVelocity();
-                //  printf("%.5f\n",sqrt(velocity.x_*velocity.x_+velocity.y_*velocity.y_));
+                if (sendRole[1] == 1 && currentRole[1] == 1) {
+                    catchBall();                    
+                }
+                else if (sendRole[2] == 1 && currentRole[2] == 1){
+                    moveToSafestGrid();
+                }
+                else {
+                    shoot_flag = 0;
+                    action_cmd_.handle_enable = 0;
+                    action_cmd_.move_action = No_Action;
+                    action_cmd_.rotate_acton = No_Action;
+                }
             }
+
             else if (world_model_info_.AgentID_ - 1 == 2)
             {
-                supportTarget.x_ = currentRole[1]; // passArea[robot.targetZone][0];
-                supportTarget.y_ = currentRole[2]; // passArea[robot.targetZone][1];
-                DPoint tr = DPoint(posx[1], posy[1]) - robot_pos_;
-                // action_cmd_.rotate_acton = Positioned_Static;
-                // DPoint rtt = DPoint(supportTarget.x_, supportTarget.y_) - robot_pos_;
-                // angleToTarget = rtt.angle().degree();
-
-                
-                bool isTouching = false;
-                bool touched[12];
-                int angleToTarget;
-                int closestAngle = 360, choosenAngle = 0;
-
-                DPoint rtt = DPoint(supportTarget.x_, supportTarget.y_) - robot_pos_;
-                angleToTarget = rtt.angle().degree();
-
-                for (int i = 1; i < 5; i++)
-                {
-                    for (int j = -180; j < 180; j += 30)
-                    {
-                        // Calculate endpoints of the line
-
-                        float x2 = robot_pos_.x_ + 80.0 * cos(j * (M_PI / 180));
-                        float y2 = robot_pos_.y_ + 80.0 * sin(j * (M_PI / 180));
-                        float x1 = robot.posx;
-                        float y1 = robot.posy;
-                        // Calculate distances between opponent and endpoints of the line
-                        float dist = sqrt(pow(x2 - posxOpp[i], 2) + pow(y2 - posyOpp[i], 2));
-                        if (j == -180 && i == 1)
-                            printf("X1 %.2f X2 %.2f Dist %.2f\n ", x2, y2, dist);
-
-                        // Determine if opponent is touching the line
-                        if (robot_pos_.distance(supportTarget) > 300 && dist < 20)
-                        {
-                            isTouching = true;
-                            touched[(j + 180) / 30] = true;
-                            // return true;
-                            printf("Touching %d\n ", j);
-                        }
-                        else if (robot_pos_.distance(supportTarget) <= 300 && dist < 20)
-                        {
-                            isTouching = true;
-                            touched[(j + 180) / 30] = true;
-                            // return true;
-                            printf("Touching %d\n ", j);
-                        }
-                    }
+                if (currentRole[1] == 2) {
+                    catchBall();                    
                 }
-
-                if (isTouching == true)
-                {
-                    for (int j = -180; j < 180; j += 30)
-                    { // check Closest Angle
-
-                        if (touched[(j + 180) / 30] == true)
-                            continue;
-                        if (abs(angleToTarget - j) < closestAngle)
-                        {
-                            closestAngle = j;
-                        }
-                    }
-                    supportTarget.x_ = robot_pos_.x_ + robot_pos_.distance(supportTarget) * cos(closestAngle * (M_PI / 180));
-                    supportTarget.y_ = robot_pos_.y_ + robot_pos_.distance(supportTarget) * sin(closestAngle * (M_PI / 180));
-                    action_cmd_.maxvel = 150;
+                else if (currentRole[2] == 2){
+                    moveToSafestGrid();
                 }
-                else action_cmd_.maxvel = 150;
-                
-
-                move2target(supportTarget, robot_pos_, 200.0f, 0);
-                move2ori(tr.angle().radian_, robot_ori_.radian_);
-                action_cmd_.move_action = Positioned_Static;
-                action_cmd_.rotate_acton = Positioned_Static;
-                action_cmd_.rotate_mode = 0;
-
-                // printf("%.2f %.2f|| ", posxOpp[i], posyOpp[i]);
+                else {
+                    shoot_flag = 0;
+                    action_cmd_.handle_enable = 0;
+                    action_cmd_.move_action = No_Action;
+                    action_cmd_.rotate_acton = No_Action;
+                }
             }
+
             else if (world_model_info_.AgentID_ - 1 == 3)
             {
+                if (currentRole[1] == 3) {
+                    catchBall();                    
+                }
+                else if (currentRole[2] == 3){
+                    moveToSafestGrid();
+                }
+                else {
+                    shoot_flag = 0;
+                    action_cmd_.handle_enable = 0;
+                    action_cmd_.move_action = No_Action;
+                    action_cmd_.rotate_acton = No_Action;
+                }
             }
+
             else if (world_model_info_.AgentID_ - 1 == 4)
             {
-            }
-
-            // switchGame();
-            /*
-            if (world_model_info_.AgentID_ == 2)
-            {
-
-                chaser = checkNearestToBall();
-                robot.targetZone = safePassingArea();
-                supportTarget.x_ = passArea[robot.targetZone][0];
-                supportTarget.y_ = passArea[robot.targetZone][1];
-                support = checkNearestToZone(chaser, supportTarget);
-            }
-
-            printf("Chaser:%d support:%d safeArea: %d\n", chaser, support, robot.targetZone);
-
-            if (chaser == (world_model_info_.AgentID_ - 1))
-            {
-                catchBall();
-            }
-            else if (support == (world_model_info_.AgentID_ - 1))
-            {
-                action_cmd_.move_action = Positioned_Static;
-                action_cmd_.rotate_acton = Positioned_Static;
-                action_cmd_.rotate_mode = 0;
-                //if (move2ori(SINGLEPI_CONSTANT / 2.0, robot_ori_.radian_))
-                move2target(supportTarget, robot_pos_);
-            }
-            else
-            {
-                action_cmd_.move_action = No_Action;
-                action_cmd_.rotate_acton = No_Action;
-            }
-            */
-        }
-
-        void switchGame()
-        {
-
-            switch (world_model_info_.AgentID_)
-            {
-            case 1:
-            {
-                checkShootingLine(posx[1], posy[1]);
-                break;
-            }
-            case 2:
-                break;
-            case 3:
-                break;
-            case 4:
-                break;
-            case 5:
-            {
-            }
+                if (currentRole[1] == 4) {
+                    catchBall();                    
+                }
+                else if (currentRole[2] == 4){
+                    moveToSafestGrid();
+                }
+                else {
+                    shoot_flag = 0;
+                    action_cmd_.handle_enable = 0;
+                    action_cmd_.move_action = No_Action;
+                    action_cmd_.rotate_acton = No_Action;
+                }
             }
         }
 
@@ -638,10 +572,72 @@ namespace nubot
                 action_cmd_.move_action = CatchBall_slow;
                 action_cmd_.rotate_acton = CatchBall_slow;
                 action_cmd_.rotate_mode = 0;
-                return false;
+                action_cmd_.handle_enable = 0;
+                shoot_flag = false;
             }
-            else
-                return true;
+            else if (world_model_info_.RobotInfo_[world_model_info_.AgentID_ - 1].getDribbleState() && currentRole[2] != 99){
+                action_cmd_.handle_enable = 1;
+                move2target(robot_pos_, robot_pos_);
+                action_cmd_.move_action = TurnToPass;
+                action_cmd_.rotate_acton = TurnToPass;
+
+                DPoint tr_goalTop = DPoint(1090, 80) - robot_pos_;
+                DPoint tr_goalBot = DPoint(1090, -80) - robot_pos_;
+                DPoint tr = DPoint(posx[currentRole[2]], posy[currentRole[2]]) - robot_pos_; //target Passer to Support
+                DPoint passerVel = world_model_info_.RobotInfo_[currentRole[2]].getVelocity();
+
+                if (checkShootingLine(1090.0,80.0) && tr_goalTop.length() < 1000){ //Check if Shooting Line TOP FREE
+                    sendRole[4] = 98;
+                    if (move2ori(tr_goalTop.angle().radian_, robot_ori_.radian_,3*DEG2RAD,10.0) && !shoot_flag) {
+                        prevTK = ros::Time::now(); //+ ros::Duration(1.0);
+                        action_cmd_.shootPos = RUN;//FLY
+                        action_cmd_.strength = tr_goalTop.length()/20;
+                        
+                        if(action_cmd_.strength<3.0)
+                            action_cmd_.strength = 3.0;
+                        shoot_flag = true;
+                        
+                        std::cout<<"shoot done "<<std::endl;
+                    }
+                }
+                else if (checkShootingLine(1090.0,-80.0) && tr_goalBot.length() < 1000){ //Check if Shooting Line BOT FREE
+                    sendRole[4] = 98;
+                    if (move2ori(tr_goalBot.angle().radian_, robot_ori_.radian_,3*DEG2RAD,10.0) && !shoot_flag) {
+                        prevTK = ros::Time::now(); // + ros::Duration(1.0);
+                        action_cmd_.shootPos = RUN;//FLY
+                        action_cmd_.strength = tr_goalBot.length()/20;
+                        
+                        if(action_cmd_.strength<3.0)
+                            action_cmd_.strength = 3.0;
+                        shoot_flag = true;
+                        
+                        std::cout<<"shoot done "<<std::endl;
+                    }
+                }
+                else {
+                    if (move2ori(tr.angle().radian_, robot_ori_.radian_,2*DEG2RAD,10.0) && passerVel.length() < 3.0 && !shoot_flag){
+                        prevTK = ros::Time::now();// + ros::Duration(0.4);
+                        action_cmd_.shootPos = RUN;//FLY
+                        action_cmd_.strength = tr.length()/60;
+                        if(action_cmd_.strength<3.0)
+                            action_cmd_.strength = 3.0;
+                        shoot_flag = true;
+                    
+                        std::cout<<"shoot done "<<std::endl;
+                        sendRole[4] = 99;
+                    }
+                    else {
+                    }
+                }
+            }
+            if(shoot_flag)
+                shoot_count++;
+            if(shoot_count>20)
+            {
+                shoot_count=0;
+                shoot_flag=false;
+            }
+                
         }
 
         bool isNearestRobot() // 找到距离足球最近的机器人
@@ -704,7 +700,7 @@ namespace nubot
                         robot_id = _i;
                     }
                 }
-                printf("%d||%.2f||%d\n", _i, distance_min, _chaser);
+                //printf("%d||%.2f||%d\n", _i, distance_min, _chaser);
             }
 
             return robot_id;
@@ -745,9 +741,84 @@ namespace nubot
                     }
                 }
             }
-            if (shootClear == true)
-                printf("ShootClear!\n");
+            // if (shootClear == true)
+            //     printf("ShootClear!\n");
             return shootClear;
+        }
+
+        void moveToSafestGrid(){
+            
+                int _choosenZone = currentRole[3];
+                supportTarget.x_ = passArea[_choosenZone][0];
+                supportTarget.y_ = passArea[_choosenZone][1]; 
+                DPoint tr = DPoint(posx[currentRole[1]], posy[currentRole[1]]) - robot_pos_; //target Passer for Heading 
+
+                bool isTouching = false;
+                bool touched[12];
+                int angleToTarget;
+                int closestAngle = 360, choosenAngle = 0;
+
+                DPoint rtt = DPoint(supportTarget.x_, supportTarget.y_) - robot_pos_;
+                angleToTarget = rtt.angle().degree();
+
+                for (int i = 1; i < 5; i++)
+                {
+                    for (int j = -180; j < 180; j += 30)
+                    {
+                        // Calculate endpoints of the line
+
+                        float x2 = robot_pos_.x_ + 80.0 * cos(j * (M_PI / 180));
+                        float y2 = robot_pos_.y_ + 80.0 * sin(j * (M_PI / 180));
+                        float x1 = robot.posx;
+                        float y1 = robot.posy;
+                        // Calculate distances between opponent and endpoints of the line
+                        float dist = sqrt(pow(x2 - posxOpp[i], 2) + pow(y2 - posyOpp[i], 2));
+                        if (j == -180 && i == 1)
+                            //printf("X1 %.2f X2 %.2f Dist %.2f\n ", x2, y2, dist);
+
+                        // Determine if opponent is touching the line
+                        if (robot_pos_.distance(supportTarget) > 300 && dist < 20)
+                        {
+                            isTouching = true;
+                            touched[(j + 180) / 30] = true;
+                            // return true;
+                            printf("Touching %d\n ", j);
+                        }
+                        else if (robot_pos_.distance(supportTarget) <= 300 && dist < 20)
+                        {
+                            isTouching = true;
+                            touched[(j + 180) / 30] = true;
+                            // return true;
+                            //printf("Touching %d\n ", j);
+                        }
+                    }
+                }
+
+                if (isTouching == true)
+                {
+                    for (int j = -180; j < 180; j += 30)
+                    { // check Closest Angle
+
+                        if (touched[(j + 180) / 30] == true)
+                            continue;
+                        if (abs(angleToTarget - j) < closestAngle)
+                        {
+                            closestAngle = j;
+                        }
+                    }
+                    supportTarget.x_ = robot_pos_.x_ + robot_pos_.distance(supportTarget) * cos(closestAngle * (M_PI / 180));
+                    supportTarget.y_ = robot_pos_.y_ + robot_pos_.distance(supportTarget) * sin(closestAngle * (M_PI / 180));
+                    action_cmd_.maxvel = 150;
+                }
+                else
+                    action_cmd_.maxvel = 150;
+
+                move2target(supportTarget, robot_pos_, 200.0f, 0);
+                move2ori(tr.angle().radian_, robot_ori_.radian_); //target
+                action_cmd_.handle_enable = 1;
+                action_cmd_.move_action = Positioned_Static;
+                action_cmd_.rotate_acton = Positioned_Static;
+                action_cmd_.rotate_mode = 0;
         }
 
         bool checkShootingLine(float x1, float y1, float x2, float y2, float safety = 5.0f)
@@ -785,6 +856,11 @@ namespace nubot
                             shootClear = false;
                             // printf("obs in %.2f %.2f %.2f\n", cx, cy, dist);
                         }
+                        if (i == 0)
+                        {
+                            printf("x1:%d|y1:%d|x2:%d|y2:%d|OppX:%d|OppY:%d|t1:%.2f|t2:%.2f|state:%d\n",(int)posx[1],(int)posy[1],
+                            (int)posx[2],(int)posy[2],(int)posxOpp[0],(int)posyOpp[0],t1,t2,(int)shootClear);
+                        }
                     }
                 }
             }
@@ -798,14 +874,25 @@ namespace nubot
         {
             float highest = 0.0f;
             float zoneScore[140];
-            float posxPasser = posx[id];
-            float posyPasser = posy[id];
+            float posxPasser,posyPasser;
+
+            if(!world_model_info_.RobotInfo_[id].getDribbleState()){
+                posxPasser = ball_pos_.x_;
+                posyPasser = ball_pos_.y_;
+            }
+            else {
+                posxPasser = posx[id];
+                posyPasser = posy[id];
+            }
             int choosenPassArea = 0;
+
+            float gToGoalScore = 0.0f,gToPasserScore = 0.0f, oppDistScore = 0.0f;
+
 
             for (int i = 0; i < maxPassArea; i++)
             {
                 zoneScore[i] = 0.0;
-                double oppDistScore = 0.0f;
+                oppDistScore = 0.0f;
                 DPoint zonePos(passArea[i][0], passArea[i][1]);
                 double up_radian_ = (world_model_info_.field_info_.oppGoal_[GOAL_MIDUPPER] - zonePos).angle().degree();
                 double low_radian_ = (world_model_info_.field_info_.oppGoal_[GOAL_MIDLOWER] - zonePos).angle().degree();
@@ -832,8 +919,7 @@ namespace nubot
                 }
 
                 float gToPasser = distancef(passArea[i][0], passArea[i][1], posxPasser, posyPasser);
-                float minDistPasser = 400.0f, maxDistPasser = 1000.0f, gToPasserScore = 0.0f;
-
+                float minDistPasser = 400.0f, maxDistPasser = 1000.0f;
                 if (gToPasser > minDistPasser)
                 {
                     if (gToPasser > maxDistPasser)
@@ -844,7 +930,7 @@ namespace nubot
                     gToPasserScore = 1.0f;
 
                 double gToGoal = world_model_info_.field_info_.oppGoal_[GOAL_MIDDLE].distance(zonePos);
-                float minDistGoal = 200.0f, maxDistGoal = 1000.0f, gToGoalScore = 0.0f;
+                float minDistGoal = 200.0f, maxDistGoal = 1000.0f;
 
                 if (gToGoal > minDistGoal)
                 {
@@ -893,10 +979,14 @@ namespace nubot
 
             if (checkShootingLine(passArea[choosenPassArea][0], passArea[choosenPassArea][1], posxPasser, posyPasser) == false)
             {
-                printf("Cannot shoot laa\n");
+                //printf("Cannot shoot laa\n");
             }
 
-            // printf("Zone %d - Score %d %d %d %d\n", choosenPassArea, zoneScore[0], zoneScore[1], zoneScore[2], zoneScore[3]);
+            printf("Grid:%d|posx:%d|posy:%d|Score:%.2f|sTg:%.2f|sTp:%.2f|sOpp:%.2f|\n", choosenPassArea, passArea[choosenPassArea][0], passArea[choosenPassArea][1],zoneScore[choosenPassArea],(1.0f - gToGoalScore) + 0.66f, (1.0f - gToPasserScore) * 0.33f, oppDistScore * 0.20f);
+            for (int op=0;op<5;op++){
+                printf("|op%d|posx:%d|posy:%d|",op+1, posxOpp[op], posyOpp[op]);
+            }
+            printf("\n\n");
             // printf("Zone %d - Score %.2f\n", choosenPassArea, zoneScore[choosenPassArea]);
             return choosenPassArea;
         }
@@ -911,17 +1001,18 @@ namespace nubot
         {
             action_cmd_.target.x = target.x_;
             action_cmd_.target.y = target.y_;
-            if (offMaxVel == 0) action_cmd_.maxvel = pos.distance(target);
+            if (offMaxVel == 0)
+                action_cmd_.maxvel = pos.distance(target);
             if (pos.distance(target) > distance_thres)
                 return false;
             else
                 return true;
         }
 
-        bool move2ori(double target, double angle, double angle_thres = 8.0 * DEG2RAD) // 一个十分简单的实现，可以用PID
+        bool move2ori(double target, double angle, double angle_thres = 8.0 * DEG2RAD, double maxMult = 1.0) // 一个十分简单的实现，可以用PID
         {
             action_cmd_.target_ori = target;
-            action_cmd_.maxw = fabs(target - angle) * 4;
+            action_cmd_.maxw = fabs(target - angle) * 4 * maxMult;
             if (fabs(target - angle) > angle_thres) // 容许误差为5度
                 return false;
             else
@@ -1212,7 +1303,6 @@ void normalGame()
             shoot_count=0;
             shoot_flag=false;
         }
-
     }
 }
 */

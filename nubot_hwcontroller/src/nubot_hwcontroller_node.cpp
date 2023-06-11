@@ -303,7 +303,9 @@ void Nubot_HWController::rotate2AbsOrienation()
         while(theta_e > SINGLEPI_CONSTANT) theta_e = theta_e-2*SINGLEPI_CONSTANT;
         while(theta_e <= -SINGLEPI_CONSTANT) theta_e = theta_e+2*SINGLEPI_CONSTANT;
     }
-    p_rotation_=2; d_rotation_=0;
+    if (fabs(theta_e) > 5) {p_rotation_=3; d_rotation_=0.1;}
+    else {p_rotation_=5; d_rotation_=0.0;}
+    
     w = basicPDControl(p_rotation_,d_rotation_,theta_e,theta_e1,maxw_);
     theta_e1 = theta_e ;
 }
